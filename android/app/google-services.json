@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "361684345787",
+    "project_id": "speakdocs-1778a",
+    "storage_bucket": "speakdocs-1778a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:361684345787:android:e7b46a4a168addd4f51a9e",
+        "android_client_info": {
+          "package_name": "com.vadm.voice_assisted_document_manager"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDy38P7W6Sb1oQ5GVM8esgsA8iATToqyGs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
