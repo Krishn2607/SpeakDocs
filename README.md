@@ -1,4 +1,4 @@
-# voice_assisted_document_manager
+# SpeakDocs
 
 A new Flutter project.
 
