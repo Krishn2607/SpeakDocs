@@ -102,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     try {
-      await _authService.resetPassword(
+      await _authController.resetPassword(
         _emailController.text.trim(),
       );
 
