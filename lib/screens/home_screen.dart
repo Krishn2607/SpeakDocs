@@ -7,6 +7,7 @@ import '../controllers/auth_controller.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/document_card.dart';
 import '../widgets/stat_card.dart';
+import 'upload_document_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -35,8 +36,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   final DocumentController _documentController = DocumentController();
-
-  bool _isUploading = false;
 
   // Keep one realtime stream for the lifetime of this screen.
   // This prevents duplicate stream subscriptions when setState()
@@ -90,52 +89,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return 'User';
-  }
-
-  // ============================================================
-  // UPLOAD DOCUMENT
-  // ============================================================
-
-  Future<void> _uploadDocument() async {
-    if (_isUploading) {
-      return;
-    }
-
-    setState(() {
-      _isUploading = true;
-    });
-
-    try {
-      await _documentController.uploadDocument();
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Document uploaded successfully!'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-        });
-      }
-    }
   }
 
   // ============================================================
@@ -431,19 +384,15 @@ class _HomeScreenState extends State<HomeScreen> {
       // UPLOAD BUTTON
       // ============================================================
       floatingActionButton: FloatingActionButton(
-        onPressed: _isUploading ? null : _uploadDocument,
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const UploadDocumentScreen()),
+          );
+        },
         backgroundColor: const Color(0xFF4DB58A),
         elevation: 2,
-        child: _isUploading
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(Icons.add_rounded, color: Colors.white, size: 30),
+        child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
       ),
     );
   }

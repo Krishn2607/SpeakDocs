@@ -16,10 +16,41 @@ class DocumentService {
   static const String _bucketName = 'documents';
 
   // ============================================================
-  // PICK AND UPLOAD DOCUMENT
+  // PICK DOCUMENT
+  // ============================================================
+  //
+  // Opens the device file picker and returns the selected file.
+  //
+  // The actual upload is handled separately so the UI can show
+  // the selected file before uploading it.
+  //
+  Future<PlatformFile?> pickDocument() async {
+    final List<PlatformFile> files =
+    await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: [
+        'pdf',
+        'doc',
+        'docx',
+      ],
+    );
+
+    // User cancelled the picker.
+    if (files.isEmpty) {
+      return null;
+    }
+
+    return files.first;
+  }
+
+  // ============================================================
+  // UPLOAD DOCUMENT
   // ============================================================
 
-  Future<void> pickAndUploadDocument() async {
+  Future<void> uploadDocument({
+    required PlatformFile selectedFile,
+    required String category,
+  }) async {
     // ----------------------------------------------------------
     // 1. Get current Firebase user
     // ----------------------------------------------------------
@@ -32,26 +63,8 @@ class DocumentService {
     }
 
     // ----------------------------------------------------------
-    // 2. Open file picker
+    // 2. Get file information
     // ----------------------------------------------------------
-
-    final List<PlatformFile> files =
-    await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: [
-        'pdf',
-        'doc',
-        'docx',
-      ],
-    );
-
-    // User cancelled the picker
-    if (files.isEmpty) {
-      return;
-    }
-
-    final PlatformFile selectedFile =
-        files.first;
 
     final String fileName =
         selectedFile.name;
@@ -92,7 +105,7 @@ class DocumentService {
     //
     // Example:
     //
-    // btxfmirnu4b5hQbrm0YFtWn6Cxm1/
+    // userId/
     // 1756123456_resume.pdf
     // ----------------------------------------------------------
 
@@ -126,7 +139,7 @@ class DocumentService {
       'size': _formatFileSize(fileSize),
       'size_bytes': fileSize,
       'storage_path': storagePath,
-      'category': 'General',
+      'category': category,
     });
   }
 
