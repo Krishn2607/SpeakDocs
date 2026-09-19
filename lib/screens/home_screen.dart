@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -10,40 +9,45 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() =>
-      _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState
-    extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
   // CONTROLLERS
   // ============================================================
 
-  final TextEditingController
-  _searchController =
-  TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   // ============================================================
   // CURRENT USER
   // ============================================================
 
-  final User? _user =
-      FirebaseAuth.instance.currentUser;
+  final User? _user = FirebaseAuth.instance.currentUser;
 
   // ============================================================
   // DOCUMENT SERVICE
   // ============================================================
 
-  final DocumentService
-  _documentService =
-  DocumentService();
+  final DocumentService _documentService = DocumentService();
 
   bool _isUploading = false;
+
+  // Keep one realtime stream for the lifetime of this screen.
+  // This prevents duplicate stream subscriptions when setState()
+  // rebuilds the dashboard during document uploads.
+  late final Stream<List<Map<String, dynamic>>> _documentsStream;
 
   // ============================================================
   // DISPOSE
   // ============================================================
+
+  @override
+  void initState() {
+    super.initState();
+
+    _documentsStream = _documentService.getUserDocuments();
+  }
 
   @override
   void dispose() {
@@ -56,8 +60,7 @@ class _HomeScreenState
   // ============================================================
 
   String _getGreeting() {
-    final int hour =
-        DateTime.now().hour;
+    final int hour = DateTime.now().hour;
 
     if (hour < 12) {
       return 'Good morning';
@@ -75,11 +78,9 @@ class _HomeScreenState
   // ============================================================
 
   String _getUserName() {
-    final String? name =
-    _user?.displayName?.trim();
+    final String? name = _user?.displayName?.trim();
 
-    if (name != null &&
-        name.isNotEmpty) {
+    if (name != null && name.isNotEmpty) {
       return name;
     }
 
@@ -100,21 +101,16 @@ class _HomeScreenState
     });
 
     try {
-      await _documentService
-          .pickAndUploadDocument();
+      await _documentService.pickAndUploadDocument();
 
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Document uploaded successfully!',
-          ),
-          behavior:
-          SnackBarBehavior.floating,
+          content: Text('Document uploaded successfully!'),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } catch (e) {
@@ -122,18 +118,10 @@ class _HomeScreenState
         return;
       }
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            e.toString()
-                .replaceFirst(
-              'Exception: ',
-              '',
-            ),
-          ),
-          behavior:
-          SnackBarBehavior.floating,
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } finally {
@@ -150,14 +138,10 @@ class _HomeScreenState
   // ============================================================
 
   void _showVoiceSearchMessage() {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text(
-          'Voice search will be added later.',
-        ),
-        behavior:
-        SnackBarBehavior.floating,
+        content: Text('Voice search will be added later.'),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -175,11 +159,8 @@ class _HomeScreenState
 
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(
-        builder: (_) =>
-        const LoginScreen(),
-      ),
-          (route) => false,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
     );
   }
 
@@ -190,30 +171,19 @@ class _HomeScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-      const Color(0xFFF5F6FA),
+      backgroundColor: const Color(0xFFF5F6FA),
 
       body: SafeArea(
-        child:
-        StreamBuilder<
-            QuerySnapshot<
-                Map<String, dynamic>>>(
-          stream: _documentService
-              .getUserDocuments(),
+        child: StreamBuilder<List<Map<String, dynamic>>>(
+          stream: _documentsStream,
 
-          builder:
-              (context, snapshot) {
+          builder: (context, snapshot) {
             // ----------------------------------------------------
             // LOADING
             // ----------------------------------------------------
 
-            if (snapshot
-                .connectionState ==
-                ConnectionState.waiting) {
-              return const Center(
-                child:
-                CircularProgressIndicator(),
-              );
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
             }
 
             // ----------------------------------------------------
@@ -223,18 +193,11 @@ class _HomeScreenState
             if (snapshot.hasError) {
               return Center(
                 child: Padding(
-                  padding:
-                  const EdgeInsets.all(
-                    24,
-                  ),
+                  padding: const EdgeInsets.all(24),
                   child: Text(
                     'Unable to load documents.',
-                    textAlign:
-                    TextAlign.center,
-                    style: TextStyle(
-                      color:
-                      Colors.grey.shade700,
-                    ),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade700),
                   ),
                 ),
               );
@@ -244,76 +207,54 @@ class _HomeScreenState
             // GET DOCUMENTS
             // ----------------------------------------------------
 
-            final List<
-                QueryDocumentSnapshot<
-                    Map<String, dynamic>>>
-            documents =
-            List.from(
-              snapshot.data?.docs ??
-                  [],
-            );
+            final List<Map<String, dynamic>> documents =
+                List<Map<String, dynamic>>.from(snapshot.data ?? []);
 
             // ----------------------------------------------------
             // SORT NEWEST FIRST
             // ----------------------------------------------------
 
-            documents.sort(
-                  (a, b) {
-                final Timestamp? aTime =
-                a.data()['uploadedAt']
-                as Timestamp?;
+            documents.sort((a, b) {
+              final DateTime? aTime = DateTime.tryParse(
+                a['uploaded_at']?.toString() ?? '',
+              );
 
-                final Timestamp? bTime =
-                b.data()['uploadedAt']
-                as Timestamp?;
+              final DateTime? bTime = DateTime.tryParse(
+                b['uploaded_at']?.toString() ?? '',
+              );
 
-                if (aTime == null &&
-                    bTime == null) {
-                  return 0;
-                }
+              if (aTime == null && bTime == null) {
+                return 0;
+              }
 
-                if (aTime == null) {
-                  return 1;
-                }
+              if (aTime == null) {
+                return 1;
+              }
 
-                if (bTime == null) {
-                  return -1;
-                }
+              if (bTime == null) {
+                return -1;
+              }
 
-                return bTime.compareTo(
-                  aTime,
-                );
-              },
-            );
+              return bTime.compareTo(aTime);
+            });
 
             // ----------------------------------------------------
             // GET UNIQUE CATEGORIES
             // ----------------------------------------------------
 
-            final Set<String>
-            categorySet =
-            {};
+            final Set<String> categorySet = {};
 
-            for (final document
-            in documents) {
-              final Map<String, dynamic>
-              data =
-              document.data();
+            for (final document in documents) {
+              final Map<String, dynamic> data = document;
 
-              final String? category =
-              data['category']
-                  ?.toString();
+              final String? category = data['category']?.toString();
 
-              if (category != null &&
-                  category.isNotEmpty) {
-                categorySet
-                    .add(category);
+              if (category != null && category.isNotEmpty) {
+                categorySet.add(category);
               }
             }
 
-            final List<String>
-            categories =
-            categorySet.toList();
+            final List<String> categories = categorySet.toList();
 
             // ----------------------------------------------------
             // MAIN DASHBOARD
@@ -324,207 +265,122 @@ class _HomeScreenState
                 // ==================================================
                 // HEADER
                 // ==================================================
-
                 Container(
-                  width:
-                  double.infinity,
+                  width: double.infinity,
 
-                  padding:
-                  const EdgeInsets
-                      .fromLTRB(
-                    18,
-                    20,
-                    18,
-                    24,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(18, 20, 18, 24),
 
-                  decoration:
-                  const BoxDecoration(
-                    color:
-                    Color(0xFF171C35),
-                  ),
+                  decoration: const BoxDecoration(color: Color(0xFF171C35)),
 
                   child: Column(
-                    crossAxisAlignment:
-                    CrossAxisAlignment
-                        .start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
 
                     children: [
                       // --------------------------------------------
                       // TOP ROW
                       // --------------------------------------------
-
                       Row(
-                        mainAxisAlignment:
-                        MainAxisAlignment
-                            .spaceBetween,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
 
                         children: [
                           Text(
                             _getGreeting(),
 
-                            style:
-                            const TextStyle(
-                              color: Color(
-                                0xFFD8DBE7,
-                              ),
+                            style: const TextStyle(
+                              color: Color(0xFFD8DBE7),
                               fontSize: 14,
-                              fontWeight:
-                              FontWeight
-                                  .w500,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
 
                           IconButton(
-                            onPressed:
-                            _logout,
+                            onPressed: _logout,
 
-                            icon:
-                            const Icon(
-                              Icons
-                                  .logout_rounded,
-                              color: Color(
-                                0xFFD8DBE7,
-                              ),
+                            icon: const Icon(
+                              Icons.logout_rounded,
+                              color: Color(0xFFD8DBE7),
                               size: 22,
                             ),
 
-                            tooltip:
-                            'Logout',
+                            tooltip: 'Logout',
                           ),
                         ],
                       ),
 
-                      const SizedBox(
-                        height: 2,
-                      ),
+                      const SizedBox(height: 2),
 
                       // --------------------------------------------
                       // USER NAME
                       // --------------------------------------------
-
                       Text(
                         _getUserName(),
 
-                        style:
-                        const TextStyle(
-                          color:
-                          Colors.white,
+                        style: const TextStyle(
+                          color: Colors.white,
                           fontSize: 21,
-                          fontWeight:
-                          FontWeight.w700,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
 
-                      const SizedBox(
-                        height: 17,
-                      ),
+                      const SizedBox(height: 17),
 
                       // --------------------------------------------
                       // SEARCH BAR
                       // --------------------------------------------
-
                       Container(
                         height: 47,
 
-                        decoration:
-                        BoxDecoration(
-                          color:
-                          Colors.white,
-                          borderRadius:
-                          BorderRadius
-                              .circular(
-                            11,
-                          ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(11),
                         ),
 
-                        child:
-                        TextField(
-                          controller:
-                          _searchController,
+                        child: TextField(
+                          controller: _searchController,
 
-                          style:
-                          const TextStyle(
-                            color: Color(
-                              0xFF171C35,
-                            ),
+                          style: const TextStyle(
+                            color: Color(0xFF171C35),
                             fontSize: 14,
                           ),
 
-                          decoration:
-                          InputDecoration(
-                            hintText:
-                            'Search documents...',
+                          decoration: InputDecoration(
+                            hintText: 'Search documents...',
 
-                            hintStyle:
-                            const TextStyle(
-                              color: Color(
-                                0xFF7C8291,
-                              ),
+                            hintStyle: const TextStyle(
+                              color: Color(0xFF7C8291),
                               fontSize: 14,
                             ),
 
-                            prefixIcon:
-                            const Icon(
-                              Icons
-                                  .search_rounded,
-                              color: Color(
-                                0xFF72798A,
-                              ),
+                            prefixIcon: const Icon(
+                              Icons.search_rounded,
+                              color: Color(0xFF72798A),
                             ),
 
-                            suffixIcon:
-                            Padding(
-                              padding:
-                              const EdgeInsets
-                                  .all(
-                                6,
-                              ),
+                            suffixIcon: Padding(
+                              padding: const EdgeInsets.all(6),
 
-                              child:
-                              Material(
-                                color:
-                                const Color(
-                                  0xFF6C63FF,
-                                ),
+                              child: Material(
+                                color: const Color(0xFF6C63FF),
 
-                                borderRadius:
-                                BorderRadius
-                                    .circular(
-                                  10,
-                                ),
+                                borderRadius: BorderRadius.circular(10),
 
-                                child:
-                                InkWell(
-                                  borderRadius:
-                                  BorderRadius
-                                      .circular(
-                                    10,
-                                  ),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
 
-                                  onTap:
-                                  _showVoiceSearchMessage,
+                                  onTap: _showVoiceSearchMessage,
 
-                                  child:
-                                  const Icon(
-                                    Icons
-                                        .mic_rounded,
-                                    color:
-                                    Colors
-                                        .white,
+                                  child: const Icon(
+                                    Icons.mic_rounded,
+                                    color: Colors.white,
                                     size: 19,
                                   ),
                                 ),
                               ),
                             ),
 
-                            border:
-                            InputBorder
-                                .none,
+                            border: InputBorder.none,
 
-                            contentPadding:
-                            const EdgeInsets
-                                .symmetric(
+                            contentPadding: const EdgeInsets.symmetric(
                               vertical: 13,
                             ),
                           ),
@@ -537,108 +393,66 @@ class _HomeScreenState
                 // ==================================================
                 // DASHBOARD CONTENT
                 // ==================================================
-
                 Expanded(
-                  child:
-                  SingleChildScrollView(
-                    padding:
-                    const EdgeInsets
-                        .fromLTRB(
-                      9,
-                      16,
-                      9,
-                      90,
-                    ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(9, 16, 9, 90),
 
                     child: Column(
-                      crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
 
                       children: [
                         // ==========================================
                         // STATISTICS
                         // ==========================================
-
                         Row(
                           children: [
                             Expanded(
-                              child:
-                              _buildStatCard(
-                                value:
-                                documents
-                                    .length
-                                    .toString(),
+                              child: _buildStatCard(
+                                value: documents.length.toString(),
 
-                                label:
-                                'Documents',
+                                label: 'Documents',
 
-                                icon:
-                                Icons
-                                    .description_outlined,
+                                icon: Icons.description_outlined,
                               ),
                             ),
 
-                            const SizedBox(
-                              width: 10,
-                            ),
+                            const SizedBox(width: 10),
 
                             Expanded(
-                              child:
-                              _buildStatCard(
-                                value:
-                                categories
-                                    .length
-                                    .toString(),
+                              child: _buildStatCard(
+                                value: categories.length.toString(),
 
-                                label:
-                                'Categories',
+                                label: 'Categories',
 
-                                icon:
-                                Icons
-                                    .folder_outlined,
+                                icon: Icons.folder_outlined,
                               ),
                             ),
                           ],
                         ),
 
-                        const SizedBox(
-                          height: 18,
-                        ),
+                        const SizedBox(height: 18),
 
                         // ==========================================
                         // CATEGORIES
                         // ==========================================
-
                         const Text(
                           'Categories',
 
-                          style:
-                          TextStyle(
-                            color: Color(
-                              0xFF171C35,
-                            ),
+                          style: TextStyle(
+                            color: Color(0xFF171C35),
                             fontSize: 14,
-                            fontWeight:
-                            FontWeight
-                                .w700,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 8,
-                        ),
+                        const SizedBox(height: 8),
 
-                        if (categories
-                            .isEmpty)
+                        if (categories.isEmpty)
                           const Text(
                             'No categories yet',
 
-                            style:
-                            TextStyle(
-                              color: Color(
-                                0xFF8A8F9D,
-                              ),
+                            style: TextStyle(
+                              color: Color(0xFF8A8F9D),
                               fontSize: 13,
                             ),
                           )
@@ -647,63 +461,35 @@ class _HomeScreenState
                             spacing: 8,
                             runSpacing: 8,
 
-                            children:
-                            categories
-                                .map(
-                                  (
-                                  category,
-                                  ) =>
-                                  _buildCategoryChip(
-                                    category,
-                                  ),
-                            )
+                            children: categories
+                                .map((category) => _buildCategoryChip(category))
                                 .toList(),
                           ),
 
-                        const SizedBox(
-                          height: 20,
-                        ),
+                        const SizedBox(height: 20),
 
                         // ==========================================
                         // RECENT DOCUMENTS
                         // ==========================================
-
                         const Text(
                           'Recent documents',
 
-                          style:
-                          TextStyle(
-                            color: Color(
-                              0xFF171C35,
-                            ),
+                          style: TextStyle(
+                            color: Color(0xFF171C35),
                             fontSize: 14,
-                            fontWeight:
-                            FontWeight
-                                .w700,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 8,
-                        ),
+                        const SizedBox(height: 8),
 
-                        if (documents
-                            .isEmpty)
+                        if (documents.isEmpty)
                           _buildEmptyDocuments()
                         else
                           Column(
-                            children:
-                            documents
+                            children: documents
                                 .take(5)
-                                .map(
-                                  (
-                                  document,
-                                  ) =>
-                                  _buildDocumentCard(
-                                    document
-                                        .data(),
-                                  ),
-                            )
+                                .map((document) => _buildDocumentCard(document))
                                 .toList(),
                           ),
                       ],
@@ -719,37 +505,24 @@ class _HomeScreenState
       // ============================================================
       // UPLOAD BUTTON
       // ============================================================
+      floatingActionButton: FloatingActionButton(
+        onPressed: _isUploading ? null : _uploadDocument,
 
-      floatingActionButton:
-      FloatingActionButton(
-        onPressed:
-        _isUploading
-            ? null
-            : _uploadDocument,
-
-        backgroundColor:
-        const Color(0xFF4DB58A),
+        backgroundColor: const Color(0xFF4DB58A),
 
         elevation: 2,
 
         child: _isUploading
             ? const SizedBox(
-          width: 22,
-          height: 22,
+                width: 22,
+                height: 22,
 
-          child:
-          CircularProgressIndicator(
-            strokeWidth: 2,
-            color:
-            Colors.white,
-          ),
-        )
-            : const Icon(
-          Icons.add_rounded,
-          color:
-          Colors.white,
-          size: 30,
-        ),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.add_rounded, color: Colors.white, size: 30),
       ),
     );
   }
@@ -766,66 +539,42 @@ class _HomeScreenState
     return Container(
       height: 76,
 
-      padding:
-      const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 8,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
 
-      decoration:
-      BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
 
-        borderRadius:
-        BorderRadius.circular(
-          11,
-        ),
+        borderRadius: BorderRadius.circular(11),
 
-        border: Border.all(
-          color:
-          const Color(0xFFE0E3EC),
-        ),
+        border: Border.all(color: const Color(0xFFE0E3EC)),
       ),
 
       child: Row(
         children: [
           Expanded(
             child: Column(
-              mainAxisAlignment:
-              MainAxisAlignment
-                  .center,
+              mainAxisAlignment: MainAxisAlignment.center,
 
-              crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
+              crossAxisAlignment: CrossAxisAlignment.start,
 
               children: [
                 Text(
                   value,
 
-                  style:
-                  const TextStyle(
-                    color: Color(
-                      0xFF171C35,
-                    ),
+                  style: const TextStyle(
+                    color: Color(0xFF171C35),
                     fontSize: 20,
-                    fontWeight:
-                    FontWeight.w600,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
 
-                const SizedBox(
-                  height: 4,
-                ),
+                const SizedBox(height: 4),
 
                 Text(
                   label,
 
-                  style:
-                  const TextStyle(
-                    color: Color(
-                      0xFF73798A,
-                    ),
+                  style: const TextStyle(
+                    color: Color(0xFF73798A),
                     fontSize: 12,
                   ),
                 ),
@@ -833,16 +582,7 @@ class _HomeScreenState
             ),
           ),
 
-          Icon(
-            icon,
-
-            size: 17,
-
-            color:
-            const Color(
-              0xFF7B8190,
-            ),
-          ),
+          Icon(icon, size: 17, color: const Color(0xFF7B8190)),
         ],
       ),
     );
@@ -852,37 +592,23 @@ class _HomeScreenState
   // CATEGORY CHIP
   // ============================================================
 
-  Widget _buildCategoryChip(
-      String category,
-      ) {
+  Widget _buildCategoryChip(String category) {
     return Container(
-      padding:
-      const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 7,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
 
-      decoration:
-      BoxDecoration(
-        color:
-        const Color(0xFFEDEAFF),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDEAFF),
 
-        borderRadius:
-        BorderRadius.circular(
-          8,
-        ),
+        borderRadius: BorderRadius.circular(8),
       ),
 
       child: Text(
         category,
 
-        style:
-        const TextStyle(
-          color:
-          Color(0xFF4D468C),
+        style: const TextStyle(
+          color: Color(0xFF4D468C),
           fontSize: 12,
-          fontWeight:
-          FontWeight.w500,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
@@ -892,67 +618,34 @@ class _HomeScreenState
   // DOCUMENT CARD
   // ============================================================
 
-  Widget _buildDocumentCard(
-      Map<String, dynamic> document,
-      ) {
-    final String name =
-        document['name']
-            ?.toString() ??
-            'Document';
+  Widget _buildDocumentCard(Map<String, dynamic> document) {
+    final String name = document['name']?.toString() ?? 'Document';
 
-    final String category =
-        document['category']
-            ?.toString() ??
-            'General';
+    final String category = document['category']?.toString() ?? 'General';
 
-    final String size =
-        document['size']
-            ?.toString() ??
-            '';
+    final String size = document['size']?.toString() ?? '';
 
-    final String extension =
-        document['extension']
-            ?.toString() ??
-            '';
+    final String extension = document['extension']?.toString() ?? '';
 
-    IconData icon =
-        Icons.description_outlined;
+    IconData icon = Icons.description_outlined;
 
-    if (extension.toLowerCase() ==
-        'pdf') {
-      icon =
-          Icons.picture_as_pdf_outlined;
-    } else if (extension
-        .toLowerCase() ==
-        'docx') {
-      icon =
-          Icons.description_outlined;
+    if (extension.toLowerCase() == 'pdf') {
+      icon = Icons.picture_as_pdf_outlined;
+    } else if (extension.toLowerCase() == 'docx') {
+      icon = Icons.description_outlined;
     }
 
     return Container(
-      margin:
-      const EdgeInsets.only(
-        bottom: 8,
-      ),
+      margin: const EdgeInsets.only(bottom: 8),
 
-      padding:
-      const EdgeInsets.all(
-        9,
-      ),
+      padding: const EdgeInsets.all(9),
 
-      decoration:
-      BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
 
-        borderRadius:
-        BorderRadius.circular(
-          10,
-        ),
+        borderRadius: BorderRadius.circular(10),
 
-        border: Border.all(
-          color:
-          const Color(0xFFE0E3EC),
-        ),
+        border: Border.all(color: const Color(0xFFE0E3EC)),
       ),
 
       child: Row(
@@ -961,40 +654,20 @@ class _HomeScreenState
             width: 39,
             height: 39,
 
-            decoration:
-            BoxDecoration(
-              color:
-              const Color(
-                0xFFFFF1DC,
-              ),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF1DC),
 
-              borderRadius:
-              BorderRadius.circular(
-                8,
-              ),
+              borderRadius: BorderRadius.circular(8),
             ),
 
-            child: Icon(
-              icon,
-
-              color:
-              const Color(
-                0xFF9B6A2F,
-              ),
-
-              size: 21,
-            ),
+            child: Icon(icon, color: const Color(0xFF9B6A2F), size: 21),
           ),
 
-          const SizedBox(
-            width: 10,
-          ),
+          const SizedBox(width: 10),
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
+              crossAxisAlignment: CrossAxisAlignment.start,
 
               children: [
                 Text(
@@ -1002,36 +675,22 @@ class _HomeScreenState
 
                   maxLines: 1,
 
-                  overflow:
-                  TextOverflow
-                      .ellipsis,
+                  overflow: TextOverflow.ellipsis,
 
-                  style:
-                  const TextStyle(
-                    color: Color(
-                      0xFF171C35,
-                    ),
+                  style: const TextStyle(
+                    color: Color(0xFF171C35),
                     fontSize: 13,
-                    fontWeight:
-                    FontWeight
-                        .w600,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
 
-                const SizedBox(
-                  height: 3,
-                ),
+                const SizedBox(height: 3),
 
                 Text(
-                  size.isEmpty
-                      ? category
-                      : '$category • $size',
+                  size.isEmpty ? category : '$category • $size',
 
-                  style:
-                  const TextStyle(
-                    color: Color(
-                      0xFF73798A,
-                    ),
+                  style: const TextStyle(
+                    color: Color(0xFF73798A),
                     fontSize: 11,
                   ),
                 ),
@@ -1049,28 +708,16 @@ class _HomeScreenState
 
   Widget _buildEmptyDocuments() {
     return Container(
-      width:
-      double.infinity,
+      width: double.infinity,
 
-      padding:
-      const EdgeInsets.symmetric(
-        vertical: 32,
-        horizontal: 20,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
 
-      decoration:
-      BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
 
-        borderRadius:
-        BorderRadius.circular(
-          11,
-        ),
+        borderRadius: BorderRadius.circular(11),
 
-        border: Border.all(
-          color:
-          const Color(0xFFE0E3EC),
-        ),
+        border: Border.all(color: const Color(0xFFE0E3EC)),
       ),
 
       child: Column(
@@ -1080,43 +727,29 @@ class _HomeScreenState
 
             size: 44,
 
-            color:
-            Colors.grey.shade400,
+            color: Colors.grey.shade400,
           ),
 
-          const SizedBox(
-            height: 10,
-          ),
+          const SizedBox(height: 10),
 
           const Text(
             'No documents yet',
 
-            style:
-            TextStyle(
-              color:
-              Color(0xFF171C35),
+            style: TextStyle(
+              color: Color(0xFF171C35),
               fontSize: 14,
-              fontWeight:
-              FontWeight.w600,
+              fontWeight: FontWeight.w600,
             ),
           ),
 
-          const SizedBox(
-            height: 4,
-          ),
+          const SizedBox(height: 4),
 
           const Text(
             'Upload your first document to get started.',
 
-            textAlign:
-            TextAlign.center,
+            textAlign: TextAlign.center,
 
-            style:
-            TextStyle(
-              color:
-              Color(0xFF8A8F9D),
-              fontSize: 12,
-            ),
+            style: TextStyle(color: Color(0xFF8A8F9D), fontSize: 12),
           ),
         ],
       ),

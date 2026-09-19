@@ -1,68 +1,137 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final firebase_auth.FirebaseAuth _auth =
+      firebase_auth.FirebaseAuth.instance;
+
+  final SupabaseClient _supabase = Supabase.instance.client;
+
+  // =========================
+  // ENSURE SUPABASE ROLE
+  // =========================
+  Future<void> _ensureSupabaseRole(
+      firebase_auth.User user,
+      ) async {
+    try {
+      // Get the current Firebase ID token.
+      final String? idToken = await user.getIdToken();
+
+      if (idToken == null) {
+        throw Exception(
+          'Unable to get Firebase authentication token.',
+        );
+      }
+
+      // Call the Supabase Edge Function.
+      //
+      // The Edge Function verifies the Firebase ID token
+      // and sets the Firebase custom claim:
+      //
+      // role: authenticated
+      //
+      await _supabase.functions.invoke(
+        'set-firebase-role',
+        headers: {
+          'Authorization': 'Bearer $idToken',
+        },
+      );
+
+      // Firebase custom claims are included in newly issued
+      // ID tokens, so force Firebase to refresh the token.
+      await user.getIdToken(true);
+    } catch (e) {
+      print('🔥 Supabase Role Setup Error: $e');
+
+      throw Exception(
+        'Unable to configure your account. Please try again.',
+      );
+    }
+  }
 
   // =========================
   // REGISTER
   // =========================
-  Future<User?> register({
+  Future<firebase_auth.User?> register({
     required String email,
     required String password,
     required String name,
   }) async {
     try {
-      final UserCredential credential =
+      final firebase_auth.UserCredential credential =
       await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
 
-      final User? user = credential.user;
+      final firebase_auth.User? user = credential.user;
 
       if (user != null) {
         await user.updateDisplayName(name.trim());
         await user.reload();
+
+        final firebase_auth.User? updatedUser =
+            _auth.currentUser;
+
+        if (updatedUser != null) {
+          await _ensureSupabaseRole(updatedUser);
+        }
       }
 
       return _auth.currentUser;
-    } on FirebaseAuthException catch (e) {
+    } on firebase_auth.FirebaseAuthException catch (e) {
       // Print the REAL Firebase error in Android Studio terminal.
       print('🔥 Firebase Auth Error');
       print('Code: ${e.code}');
       print('Message: ${e.message}');
 
       throw Exception(_getErrorMessage(e.code));
+    } on Exception {
+      rethrow;
     } catch (e) {
       print('🔥 Unexpected Registration Error: $e');
-      throw Exception('Something went wrong. Please try again.');
+      throw Exception(
+        'Something went wrong. Please try again.',
+      );
     }
   }
 
   // =========================
   // LOGIN
   // =========================
-  Future<User?> login({
+  Future<firebase_auth.User?> login({
     required String email,
     required String password,
   }) async {
     try {
-      final UserCredential credential =
+      final firebase_auth.UserCredential credential =
       await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
 
-      return credential.user;
-    } on FirebaseAuthException catch (e) {
+      final firebase_auth.User? user = credential.user;
+
+      if (user != null) {
+        // Make sure the Firebase user has the role
+        // required by Supabase.
+        await _ensureSupabaseRole(user);
+      }
+
+      return user;
+    } on firebase_auth.FirebaseAuthException catch (e) {
       print('🔥 Firebase Login Error');
       print('Code: ${e.code}');
       print('Message: ${e.message}');
 
       throw Exception(_getErrorMessage(e.code));
+    } on Exception {
+      rethrow;
     } catch (e) {
       print('🔥 Unexpected Login Error: $e');
-      throw Exception('Something went wrong. Please try again.');
+      throw Exception(
+        'Something went wrong. Please try again.',
+      );
     }
   }
 
@@ -74,7 +143,7 @@ class AuthService {
       await _auth.sendPasswordResetEmail(
         email: email.trim(),
       );
-    } on FirebaseAuthException catch (e) {
+    } on firebase_auth.FirebaseAuthException catch (e) {
       print('🔥 Firebase Password Reset Error');
       print('Code: ${e.code}');
       print('Message: ${e.message}');
@@ -82,7 +151,9 @@ class AuthService {
       throw Exception(_getErrorMessage(e.code));
     } catch (e) {
       print('🔥 Unexpected Password Reset Error: $e');
-      throw Exception('Something went wrong. Please try again.');
+      throw Exception(
+        'Something went wrong. Please try again.',
+      );
     }
   }
 
@@ -94,14 +165,16 @@ class AuthService {
       await _auth.signOut();
     } catch (e) {
       print('🔥 Logout Error: $e');
-      throw Exception('Unable to logout. Please try again.');
+      throw Exception(
+        'Unable to logout. Please try again.',
+      );
     }
   }
 
   // =========================
   // CURRENT USER
   // =========================
-  User? get currentUser => _auth.currentUser;
+  firebase_auth.User? get currentUser => _auth.currentUser;
 
   // =========================
   // FIREBASE ERROR MESSAGES

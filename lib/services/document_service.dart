@@ -1,34 +1,43 @@
-import 'dart:io';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DocumentService {
-  final FirebaseStorage _storage =
-      FirebaseStorage.instance;
+  final firebase_auth.FirebaseAuth _auth =
+      firebase_auth.FirebaseAuth.instance;
 
-  final FirebaseFirestore _firestore =
-      FirebaseFirestore.instance;
+  final SupabaseClient _supabase =
+      Supabase.instance.client;
 
-  final FirebaseAuth _auth =
-      FirebaseAuth.instance;
+  // ============================================================
+  // SUPABASE STORAGE BUCKET
+  // ============================================================
+
+  static const String _bucketName = 'documents';
 
   // ============================================================
   // PICK AND UPLOAD DOCUMENT
   // ============================================================
 
   Future<void> pickAndUploadDocument() async {
-    final User? user = _auth.currentUser;
+    // ----------------------------------------------------------
+    // 1. Get current Firebase user
+    // ----------------------------------------------------------
+
+    final firebase_auth.User? user =
+        _auth.currentUser;
 
     if (user == null) {
       throw Exception('User is not logged in.');
     }
 
-    // Open file picker
-    final List<PlatformFile> result =
+    // ----------------------------------------------------------
+    // 2. Open file picker
+    // ----------------------------------------------------------
+
+    final List<PlatformFile> files =
     await FilePicker.pickFiles(
+      type: FileType.custom,
       allowedExtensions: [
         'pdf',
         'doc',
@@ -37,29 +46,33 @@ class DocumentService {
     );
 
     // User cancelled the picker
-    if (result.isEmpty) {
+    if (files.isEmpty) {
       return;
     }
 
     final PlatformFile selectedFile =
-        result.single;
+        files.first;
 
     final String fileName =
         selectedFile.name;
 
-    final String? filePath =
-        selectedFile.path;
+    // ----------------------------------------------------------
+    // 3. Get file bytes
+    // ----------------------------------------------------------
 
-    if (filePath == null) {
+    final bytes =
+    await selectedFile.readAsBytes();
+
+    if (bytes.isEmpty) {
       throw Exception(
-        'Unable to access selected file.',
+        'Unable to read selected file.',
       );
     }
 
-    final File file =
-    File(filePath);
+    // ----------------------------------------------------------
+    // 4. Get extension
+    // ----------------------------------------------------------
 
-    // Get extension from file name
     String extension = '';
 
     if (fileName.contains('.')) {
@@ -67,38 +80,53 @@ class DocumentService {
           fileName.split('.').last.toLowerCase();
     }
 
-    // Get actual file size
+    // ----------------------------------------------------------
+    // 5. Get file size
+    // ----------------------------------------------------------
+
     final int fileSize =
-    await file.length();
+        bytes.length;
 
-    // Create unique Firebase Storage path
+    // ----------------------------------------------------------
+    // 6. Create unique Supabase Storage path
+    //
+    // Example:
+    //
+    // btxfmirnu4b5hQbrm0YFtWn6Cxm1/
+    // 1756123456_resume.pdf
+    // ----------------------------------------------------------
+
     final String storagePath =
-        'documents/${user.uid}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+        '${user.uid}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
-    final Reference storageReference =
-    _storage.ref().child(storagePath);
+    // ----------------------------------------------------------
+    // 7. Upload file to Supabase Storage
+    // ----------------------------------------------------------
 
-    // Upload actual file to Firebase Storage
-    await storageReference.putFile(file);
+    await _supabase.storage
+        .from(_bucketName)
+        .uploadBinary(
+      storagePath,
+      bytes,
+      fileOptions: const FileOptions(
+        upsert: false,
+      ),
+    );
 
-    // Get download URL
-    final String downloadUrl =
-    await storageReference.getDownloadURL();
+    // ----------------------------------------------------------
+    // 8. Save document metadata in Supabase
+    // ----------------------------------------------------------
 
-    // Save document information in Firestore
-    await _firestore
-        .collection('documents')
-        .add({
-      'userId': user.uid,
+    await _supabase
+        .from('documents')
+        .insert({
+      'user_id': user.uid,
       'name': fileName,
       'extension': extension,
       'size': _formatFileSize(fileSize),
-      'sizeBytes': fileSize,
-      'downloadUrl': downloadUrl,
-      'storagePath': storagePath,
+      'size_bytes': fileSize,
+      'storage_path': storagePath,
       'category': 'General',
-      'uploadedAt':
-      FieldValue.serverTimestamp(),
     });
   }
 
@@ -106,22 +134,85 @@ class DocumentService {
   // GET CURRENT USER DOCUMENTS
   // ============================================================
 
-  Stream<QuerySnapshot<Map<String, dynamic>>>
+  Stream<List<Map<String, dynamic>>>
   getUserDocuments() {
-    final User? user =
+    final firebase_auth.User? user =
         _auth.currentUser;
 
     if (user == null) {
       return const Stream.empty();
     }
 
-    return _firestore
-        .collection('documents')
-        .where(
-      'userId',
-      isEqualTo: user.uid,
-    )
-        .snapshots();
+    return _supabase
+        .from('documents')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', user.uid)
+        .order(
+      'uploaded_at',
+      ascending: false,
+    );
+  }
+
+  // ============================================================
+  // DELETE DOCUMENT
+  // ============================================================
+
+  Future<void> deleteDocument(
+      Map<String, dynamic> document,
+      ) async {
+    final firebase_auth.User? user =
+        _auth.currentUser;
+
+    if (user == null) {
+      throw Exception(
+        'User is not logged in.',
+      );
+    }
+
+    final String? storagePath =
+    document['storage_path'] as String?;
+
+    final String? documentId =
+    document['id']?.toString();
+
+    if (storagePath == null ||
+        documentId == null) {
+      throw Exception(
+        'Invalid document information.',
+      );
+    }
+
+    // ----------------------------------------------------------
+    // 1. Delete actual file from Supabase Storage
+    // ----------------------------------------------------------
+
+    await _supabase.storage
+        .from(_bucketName)
+        .remove([
+      storagePath,
+    ]);
+
+    // ----------------------------------------------------------
+    // 2. Delete metadata from Supabase database
+    // ----------------------------------------------------------
+
+    await _supabase
+        .from('documents')
+        .delete()
+        .eq('id', documentId)
+        .eq('user_id', user.uid);
+  }
+
+  // ============================================================
+  // GET FILE URL
+  // ============================================================
+
+  String getFileUrl(
+      String storagePath,
+      ) {
+    return _supabase.storage
+        .from(_bucketName)
+        .getPublicUrl(storagePath);
   }
 
   // ============================================================
