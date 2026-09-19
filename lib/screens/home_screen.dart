@@ -1,8 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../controllers/document_controller.dart';
+import '../models/document_model.dart';
 import '../services/auth_service.dart';
-import '../services/document_service.dart';
+import '../widgets/category_chip.dart';
+import '../widgets/document_card.dart';
+import '../widgets/stat_card.dart';
 import 'login_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -26,17 +30,17 @@ class _HomeScreenState extends State<HomeScreen> {
   final User? _user = FirebaseAuth.instance.currentUser;
 
   // ============================================================
-  // DOCUMENT SERVICE
+  // DOCUMENT CONTROLLER
   // ============================================================
 
-  final DocumentService _documentService = DocumentService();
+  final DocumentController _documentController = DocumentController();
 
   bool _isUploading = false;
 
   // Keep one realtime stream for the lifetime of this screen.
   // This prevents duplicate stream subscriptions when setState()
   // rebuilds the dashboard during document uploads.
-  late final Stream<List<Map<String, dynamic>>> _documentsStream;
+  late final Stream<List<DocumentModel>> _documentsStream;
 
   // ============================================================
   // DISPOSE
@@ -46,7 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
 
-    _documentsStream = _documentService.getUserDocuments();
+    _documentsStream = _documentController.documentsStream;
   }
 
   @override
@@ -101,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      await _documentService.pickAndUploadDocument();
+      await _documentController.uploadDocument();
 
       if (!mounted) {
         return;
@@ -172,11 +176,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
-
       body: SafeArea(
-        child: StreamBuilder<List<Map<String, dynamic>>>(
+        child: StreamBuilder<List<DocumentModel>>(
           stream: _documentsStream,
-
           builder: (context, snapshot) {
             // ----------------------------------------------------
             // LOADING
@@ -207,54 +209,16 @@ class _HomeScreenState extends State<HomeScreen> {
             // GET DOCUMENTS
             // ----------------------------------------------------
 
-            final List<Map<String, dynamic>> documents =
-                List<Map<String, dynamic>>.from(snapshot.data ?? []);
-
-            // ----------------------------------------------------
-            // SORT NEWEST FIRST
-            // ----------------------------------------------------
-
-            documents.sort((a, b) {
-              final DateTime? aTime = DateTime.tryParse(
-                a['uploaded_at']?.toString() ?? '',
-              );
-
-              final DateTime? bTime = DateTime.tryParse(
-                b['uploaded_at']?.toString() ?? '',
-              );
-
-              if (aTime == null && bTime == null) {
-                return 0;
-              }
-
-              if (aTime == null) {
-                return 1;
-              }
-
-              if (bTime == null) {
-                return -1;
-              }
-
-              return bTime.compareTo(aTime);
-            });
+            final List<DocumentModel> documents = _documentController
+                .sortNewestFirst(snapshot.data ?? <DocumentModel>[]);
 
             // ----------------------------------------------------
             // GET UNIQUE CATEGORIES
             // ----------------------------------------------------
 
-            final Set<String> categorySet = {};
-
-            for (final document in documents) {
-              final Map<String, dynamic> data = document;
-
-              final String? category = data['category']?.toString();
-
-              if (category != null && category.isNotEmpty) {
-                categorySet.add(category);
-              }
-            }
-
-            final List<String> categories = categorySet.toList();
+            final List<String> categories = _documentController.getCategories(
+              documents,
+            );
 
             // ----------------------------------------------------
             // MAIN DASHBOARD
@@ -267,41 +231,32 @@ class _HomeScreenState extends State<HomeScreen> {
                 // ==================================================
                 Container(
                   width: double.infinity,
-
                   padding: const EdgeInsets.fromLTRB(18, 20, 18, 24),
-
                   decoration: const BoxDecoration(color: Color(0xFF171C35)),
-
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-
                     children: [
                       // --------------------------------------------
                       // TOP ROW
                       // --------------------------------------------
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
                         children: [
                           Text(
                             _getGreeting(),
-
                             style: const TextStyle(
                               color: Color(0xFFD8DBE7),
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
-
                           IconButton(
                             onPressed: _logout,
-
                             icon: const Icon(
                               Icons.logout_rounded,
                               color: Color(0xFFD8DBE7),
                               size: 22,
                             ),
-
                             tooltip: 'Logout',
                           ),
                         ],
@@ -314,7 +269,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       // --------------------------------------------
                       Text(
                         _getUserName(),
-
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 21,
@@ -329,46 +283,34 @@ class _HomeScreenState extends State<HomeScreen> {
                       // --------------------------------------------
                       Container(
                         height: 47,
-
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(11),
                         ),
-
                         child: TextField(
                           controller: _searchController,
-
                           style: const TextStyle(
                             color: Color(0xFF171C35),
                             fontSize: 14,
                           ),
-
                           decoration: InputDecoration(
                             hintText: 'Search documents...',
-
                             hintStyle: const TextStyle(
                               color: Color(0xFF7C8291),
                               fontSize: 14,
                             ),
-
                             prefixIcon: const Icon(
                               Icons.search_rounded,
                               color: Color(0xFF72798A),
                             ),
-
                             suffixIcon: Padding(
                               padding: const EdgeInsets.all(6),
-
                               child: Material(
                                 color: const Color(0xFF6C63FF),
-
                                 borderRadius: BorderRadius.circular(10),
-
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(10),
-
                                   onTap: _showVoiceSearchMessage,
-
                                   child: const Icon(
                                     Icons.mic_rounded,
                                     color: Colors.white,
@@ -377,9 +319,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                             ),
-
                             border: InputBorder.none,
-
                             contentPadding: const EdgeInsets.symmetric(
                               vertical: 13,
                             ),
@@ -396,10 +336,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(9, 16, 9, 90),
-
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-
                       children: [
                         // ==========================================
                         // STATISTICS
@@ -407,23 +345,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: _buildStatCard(
+                              child: StatCard(
                                 value: documents.length.toString(),
-
                                 label: 'Documents',
-
                                 icon: Icons.description_outlined,
                               ),
                             ),
-
                             const SizedBox(width: 10),
-
                             Expanded(
-                              child: _buildStatCard(
+                              child: StatCard(
                                 value: categories.length.toString(),
-
                                 label: 'Categories',
-
                                 icon: Icons.folder_outlined,
                               ),
                             ),
@@ -437,7 +369,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         // ==========================================
                         const Text(
                           'Categories',
-
                           style: TextStyle(
                             color: Color(0xFF171C35),
                             fontSize: 14,
@@ -450,7 +381,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         if (categories.isEmpty)
                           const Text(
                             'No categories yet',
-
                             style: TextStyle(
                               color: Color(0xFF8A8F9D),
                               fontSize: 13,
@@ -460,9 +390,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
-
                             children: categories
-                                .map((category) => _buildCategoryChip(category))
+                                .map(
+                                  (category) =>
+                                      CategoryChip(category: category),
+                                )
                                 .toList(),
                           ),
 
@@ -473,7 +405,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         // ==========================================
                         const Text(
                           'Recent documents',
-
                           style: TextStyle(
                             color: Color(0xFF171C35),
                             fontSize: 14,
@@ -489,7 +420,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           Column(
                             children: documents
                                 .take(5)
-                                .map((document) => _buildDocumentCard(document))
+                                .map(
+                                  (document) =>
+                                      DocumentCard(document: document),
+                                )
                                 .toList(),
                           ),
                       ],
@@ -507,16 +441,12 @@ class _HomeScreenState extends State<HomeScreen> {
       // ============================================================
       floatingActionButton: FloatingActionButton(
         onPressed: _isUploading ? null : _uploadDocument,
-
         backgroundColor: const Color(0xFF4DB58A),
-
         elevation: 2,
-
         child: _isUploading
             ? const SizedBox(
                 width: 22,
                 height: 22,
-
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
                   color: Colors.white,
@@ -528,227 +458,38 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // STAT CARD
-  // ============================================================
-
-  Widget _buildStatCard({
-    required String value,
-    required String label,
-    required IconData icon,
-  }) {
-    return Container(
-      height: 76,
-
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-
-      decoration: BoxDecoration(
-        color: Colors.white,
-
-        borderRadius: BorderRadius.circular(11),
-
-        border: Border.all(color: const Color(0xFFE0E3EC)),
-      ),
-
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-                Text(
-                  value,
-
-                  style: const TextStyle(
-                    color: Color(0xFF171C35),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                Text(
-                  label,
-
-                  style: const TextStyle(
-                    color: Color(0xFF73798A),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          Icon(icon, size: 17, color: const Color(0xFF7B8190)),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
-  // CATEGORY CHIP
-  // ============================================================
-
-  Widget _buildCategoryChip(String category) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-
-      decoration: BoxDecoration(
-        color: const Color(0xFFEDEAFF),
-
-        borderRadius: BorderRadius.circular(8),
-      ),
-
-      child: Text(
-        category,
-
-        style: const TextStyle(
-          color: Color(0xFF4D468C),
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // DOCUMENT CARD
-  // ============================================================
-
-  Widget _buildDocumentCard(Map<String, dynamic> document) {
-    final String name = document['name']?.toString() ?? 'Document';
-
-    final String category = document['category']?.toString() ?? 'General';
-
-    final String size = document['size']?.toString() ?? '';
-
-    final String extension = document['extension']?.toString() ?? '';
-
-    IconData icon = Icons.description_outlined;
-
-    if (extension.toLowerCase() == 'pdf') {
-      icon = Icons.picture_as_pdf_outlined;
-    } else if (extension.toLowerCase() == 'docx') {
-      icon = Icons.description_outlined;
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-
-      padding: const EdgeInsets.all(9),
-
-      decoration: BoxDecoration(
-        color: Colors.white,
-
-        borderRadius: BorderRadius.circular(10),
-
-        border: Border.all(color: const Color(0xFFE0E3EC)),
-      ),
-
-      child: Row(
-        children: [
-          Container(
-            width: 39,
-            height: 39,
-
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF1DC),
-
-              borderRadius: BorderRadius.circular(8),
-            ),
-
-            child: Icon(icon, color: const Color(0xFF9B6A2F), size: 21),
-          ),
-
-          const SizedBox(width: 10),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-                Text(
-                  name,
-
-                  maxLines: 1,
-
-                  overflow: TextOverflow.ellipsis,
-
-                  style: const TextStyle(
-                    color: Color(0xFF171C35),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-
-                const SizedBox(height: 3),
-
-                Text(
-                  size.isEmpty ? category : '$category • $size',
-
-                  style: const TextStyle(
-                    color: Color(0xFF73798A),
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
   // EMPTY DOCUMENT STATE
   // ============================================================
 
   Widget _buildEmptyDocuments() {
     return Container(
       width: double.infinity,
-
       padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
-
       decoration: BoxDecoration(
         color: Colors.white,
-
         borderRadius: BorderRadius.circular(11),
-
         border: Border.all(color: const Color(0xFFE0E3EC)),
       ),
-
       child: Column(
         children: [
           Icon(
             Icons.folder_open_outlined,
-
             size: 44,
-
             color: Colors.grey.shade400,
           ),
-
           const SizedBox(height: 10),
-
           const Text(
             'No documents yet',
-
             style: TextStyle(
               color: Color(0xFF171C35),
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),
           ),
-
           const SizedBox(height: 4),
-
           const Text(
             'Upload your first document to get started.',
-
             textAlign: TextAlign.center,
-
             style: TextStyle(color: Color(0xFF8A8F9D), fontSize: 12),
           ),
         ],
