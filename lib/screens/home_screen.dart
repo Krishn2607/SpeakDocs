@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 
 import '../controllers/document_controller.dart';
 import '../models/document_model.dart';
-import '../services/auth_service.dart';
+import '../controllers/auth_controller.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/document_card.dart';
 import '../widgets/stat_card.dart';
-import 'login_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,6 +21,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   final TextEditingController _searchController = TextEditingController();
+
+  final AuthController _authController = AuthController();
 
   // ============================================================
   // CURRENT USER
@@ -155,17 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Future<void> _logout() async {
-    await AuthService().logout();
-
-    if (!mounted) {
-      return;
-    }
-
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    await _authController.logout();
   }
 
   // ============================================================
