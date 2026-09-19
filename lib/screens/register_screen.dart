@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../services/auth_service.dart';
+import '../controllers/auth_controller.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -17,7 +17,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  final AuthService _authService = AuthService();
+  final AuthController _authController = AuthController();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -52,7 +52,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      await _authService.register(
+      await _authController.register(
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
         password: _passwordController.text,

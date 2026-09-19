@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../services/auth_service.dart';
+import '../controllers/auth_controller.dart';
 import 'register_screen.dart';
 import 'home_screen.dart';
 
@@ -17,7 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  final AuthService _authService = AuthService();
+  final AuthController _authController = AuthController();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -52,7 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      await _authService.login(
+      await _authController.login(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
