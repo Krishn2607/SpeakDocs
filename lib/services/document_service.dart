@@ -190,7 +190,6 @@ class DocumentService {
     return _supabase
         .from('documents')
         .stream(primaryKey: ['id'])
-        .eq('user_id', user.uid)
         .order('uploaded_at', ascending: false);
   }
 
