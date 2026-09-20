@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import '../widgets/empty_state_widget.dart';
 import '../controllers/document_controller.dart';
 import '../models/document_model.dart';
 import '../controllers/auth_controller.dart';
@@ -564,36 +564,12 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _buildNoSearchResults(String query) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: const Color(0xFFE0E3EC)),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.search_off_rounded, size: 44, color: Colors.grey.shade400),
-          const SizedBox(height: 10),
-          const Text(
-            'No documents found',
-            style: TextStyle(
-              color: Color(0xFF171C35),
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _selectedCategory == null
-                ? 'No documents match "$query".'
-                : 'No "$_selectedCategory" documents match "$query".',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Color(0xFF8A8F9D), fontSize: 12),
-          ),
-        ],
-      ),
+    return EmptyStateWidget(
+      icon: Icons.search_off_rounded,
+      title: 'No documents found',
+      message: _selectedCategory == null
+          ? 'No documents match "$query".'
+          : 'No "$_selectedCategory" documents match "$query".',
     );
   }
 
@@ -602,38 +578,10 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _buildEmptyDocuments() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: const Color(0xFFE0E3EC)),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.folder_open_outlined,
-            size: 44,
-            color: Colors.grey.shade400,
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'No documents yet',
-            style: TextStyle(
-              color: Color(0xFF171C35),
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Upload your first document to get started.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Color(0xFF8A8F9D), fontSize: 12),
-          ),
-        ],
-      ),
+    return const EmptyStateWidget(
+      icon: Icons.folder_open_outlined,
+      title: 'No documents yet',
+      message: 'Upload your first document to get started.',
     );
   }
 
@@ -642,38 +590,10 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _buildNoCategoryResults() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: const Color(0xFFE0E3EC)),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.folder_open_outlined,
-            size: 44,
-            color: Colors.grey.shade400,
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'No documents in this category',
-            style: TextStyle(
-              color: Color(0xFF171C35),
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Try selecting another category.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Color(0xFF8A8F9D), fontSize: 12),
-          ),
-        ],
-      ),
+    return const EmptyStateWidget(
+      icon: Icons.folder_open_outlined,
+      title: 'No documents in this category',
+      message: 'Try selecting another category.',
     );
   }
 }
