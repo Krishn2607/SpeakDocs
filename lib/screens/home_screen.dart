@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../controllers/document_controller.dart';
@@ -32,12 +31,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isSearchActive = false;
 
   String? _selectedCategory;
-
-  // ============================================================
-  // CURRENT USER
-  // ============================================================
-
-  final User? _user = FirebaseAuth.instance.currentUser;
 
   // ============================================================
   // DOCUMENT CONTROLLER
@@ -143,7 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   String _getUserName() {
-    final String? name = _user?.displayName?.trim();
+    final String? name = _authController.currentUser?.displayName?.trim();
 
     if (name != null && name.isNotEmpty) {
       return name;

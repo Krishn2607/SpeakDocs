@@ -15,6 +15,12 @@ class DocumentService {
   static const String _bucketName = 'documents';
 
   // ============================================================
+  // ALLOWED FILE EXTENSIONS
+  // ============================================================
+
+  static const List<String> _allowedExtensions = ['pdf', 'doc', 'docx'];
+
+  // ============================================================
   // PICK DOCUMENT
   // ============================================================
   //
@@ -27,7 +33,7 @@ class DocumentService {
   Future<PlatformFile?> pickDocument() async {
     final List<PlatformFile> files = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['pdf', 'doc', 'docx'],
+      allowedExtensions: _allowedExtensions,
     );
 
     // User cancelled the picker.
@@ -57,13 +63,41 @@ class DocumentService {
     }
 
     // ----------------------------------------------------------
-    // 2. Get file information
+    // 2. Validate file name
     // ----------------------------------------------------------
 
-    final String fileName = selectedFile.name;
+    final String fileName = selectedFile.name.trim();
+
+    if (fileName.isEmpty) {
+      throw Exception('The selected file has an invalid name.');
+    }
 
     // ----------------------------------------------------------
-    // 3. Get file bytes
+    // 3. Get extension
+    // ----------------------------------------------------------
+
+    String extension = '';
+
+    if (fileName.contains('.')) {
+      extension = fileName.split('.').last.toLowerCase();
+    }
+
+    if (!_allowedExtensions.contains(extension)) {
+      throw Exception('Only PDF, DOC or DOCX files are supported.');
+    }
+
+    // ----------------------------------------------------------
+    // 4. Validate category
+    // ----------------------------------------------------------
+
+    final String documentCategory = category.trim();
+
+    if (documentCategory.isEmpty) {
+      throw Exception('Please select a category.');
+    }
+
+    // ----------------------------------------------------------
+    // 5. Get file bytes
     // ----------------------------------------------------------
 
     final bytes = await selectedFile.readAsBytes();
@@ -73,23 +107,13 @@ class DocumentService {
     }
 
     // ----------------------------------------------------------
-    // 4. Get extension
-    // ----------------------------------------------------------
-
-    String extension = '';
-
-    if (fileName.contains('.')) {
-      extension = fileName.split('.').last.toLowerCase();
-    }
-
-    // ----------------------------------------------------------
-    // 5. Get file size
+    // 6. Get file size
     // ----------------------------------------------------------
 
     final int fileSize = bytes.length;
 
     // ----------------------------------------------------------
-    // 6. Create unique Supabase Storage path
+    // 7. Create unique Supabase Storage path
     //
     // Example:
     //
@@ -101,30 +125,55 @@ class DocumentService {
         '${user.uid}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
     // ----------------------------------------------------------
-    // 7. Upload file to Supabase Storage
+    // 8. Upload file to Supabase Storage
     // ----------------------------------------------------------
 
-    await _supabase.storage
-        .from(_bucketName)
-        .uploadBinary(
-          storagePath,
-          bytes,
-          fileOptions: const FileOptions(upsert: false),
+    try {
+      await _supabase.storage
+          .from(_bucketName)
+          .uploadBinary(
+            storagePath,
+            bytes,
+            fileOptions: const FileOptions(upsert: false),
+          );
+    } catch (_) {
+      throw Exception('Unable to upload the document. Please try again.');
+    }
+
+    // ----------------------------------------------------------
+    // 9. Save document metadata in Supabase
+    // ----------------------------------------------------------
+    //
+    // If the database insert fails, the file has already been
+    // uploaded to Storage. We therefore try to remove it so
+    // that an orphaned Storage file is not left behind.
+    //
+
+    try {
+      await _supabase.from('documents').insert({
+        'user_id': user.uid,
+        'name': fileName,
+        'extension': extension,
+        'size': _formatFileSize(fileSize),
+        'size_bytes': fileSize,
+        'storage_path': storagePath,
+        'category': documentCategory,
+      });
+    } catch (_) {
+      // --------------------------------------------------------
+      // Cleanup Storage file after database failure
+      // --------------------------------------------------------
+
+      try {
+        await _supabase.storage.from(_bucketName).remove([storagePath]);
+      } catch (_) {
+        throw Exception(
+          'Document upload could not be completed and temporary cleanup failed. Please try again.',
         );
+      }
 
-    // ----------------------------------------------------------
-    // 8. Save document metadata in Supabase
-    // ----------------------------------------------------------
-
-    await _supabase.from('documents').insert({
-      'user_id': user.uid,
-      'name': fileName,
-      'extension': extension,
-      'size': _formatFileSize(fileSize),
-      'size_bytes': fileSize,
-      'storage_path': storagePath,
-      'category': category,
-    });
+      throw Exception('Unable to save document information. Please try again.');
+    }
   }
 
   // ============================================================
