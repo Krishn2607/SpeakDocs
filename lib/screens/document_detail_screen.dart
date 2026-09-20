@@ -83,14 +83,17 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
     try {
       await _documentController.openDocument(widget.document);
-    } catch (error) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unable to open document: $error'),
+        const SnackBar(
+          content: Text(
+            'Unable to open document. '
+            'Please check your internet connection and try again.',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -144,10 +147,9 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     setState(() {
       _isDeleting = true;
     });
+
     try {
-      await _documentController.deleteDocument(
-        widget.document,
-      );
+      await _documentController.deleteDocument(widget.document);
 
       if (!mounted) {
         return;
@@ -161,14 +163,17 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       );
 
       Navigator.pop(context);
-    } catch (error) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unable to delete document: $error'),
+        const SnackBar(
+          content: Text(
+            'Unable to delete document. '
+            'Please check your internet connection and try again.',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );

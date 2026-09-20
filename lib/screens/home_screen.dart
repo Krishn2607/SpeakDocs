@@ -273,26 +273,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      body: SafeArea(
-        child: StreamBuilder<List<DocumentModel>>(
-          stream: _documentsStream,
-          builder: (context, snapshot) {
-            // ----------------------------------------------------
-            // LOADING
-            // ----------------------------------------------------
+    return StreamBuilder<List<DocumentModel>>(
+      stream: _documentsStream,
+      builder: (context, snapshot) {
+        // ----------------------------------------------------
+        // LOADING
+        // ----------------------------------------------------
 
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            backgroundColor: Color(0xFFF5F6FA),
+            body: SafeArea(child: Center(child: CircularProgressIndicator())),
+          );
+        }
 
-            // ----------------------------------------------------
-            // ERROR
-            // ----------------------------------------------------
+        // ----------------------------------------------------
+        // ERROR
+        // ----------------------------------------------------
 
-            if (snapshot.hasError) {
-              return Center(
+        if (snapshot.hasError) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFF5F6FA),
+            body: SafeArea(
+              child: Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(
@@ -332,49 +335,54 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
-              );
-            }
+              ),
+            ),
+          );
+        }
 
-            // ----------------------------------------------------
-            // GET DOCUMENTS
-            // ----------------------------------------------------
+        // ----------------------------------------------------
+        // GET DOCUMENTS
+        // ----------------------------------------------------
 
-            final List<DocumentModel> documents = _documentController
-                .sortNewestFirst(snapshot.data ?? <DocumentModel>[]);
+        final List<DocumentModel> documents = _documentController
+            .sortNewestFirst(snapshot.data ?? <DocumentModel>[]);
 
-            // ----------------------------------------------------
-            // APPLY CATEGORY FILTER
-            // ----------------------------------------------------
+        // ----------------------------------------------------
+        // APPLY CATEGORY FILTER
+        // ----------------------------------------------------
 
-            final List<DocumentModel> categoryResults = _documentController
-                .filterByCategory(
-                  documents: documents,
-                  category: _selectedCategory,
-                );
-
-            // ----------------------------------------------------
-            // APPLY SEARCH FILTER
-            // ----------------------------------------------------
-
-            final List<DocumentModel> filteredDocuments = _documentController
-                .searchDocuments(
-                  documents: categoryResults,
-                  query: _searchController.text,
-                );
-
-            // ----------------------------------------------------
-            // GET UNIQUE CATEGORIES
-            // ----------------------------------------------------
-
-            final List<String> categories = _documentController.getCategories(
-              documents,
+        final List<DocumentModel> categoryResults = _documentController
+            .filterByCategory(
+              documents: documents,
+              category: _selectedCategory,
             );
 
-            // ----------------------------------------------------
-            // MAIN DASHBOARD
-            // ----------------------------------------------------
+        // ----------------------------------------------------
+        // APPLY SEARCH FILTER
+        // ----------------------------------------------------
 
-            return Column(
+        final List<DocumentModel> filteredDocuments = _documentController
+            .searchDocuments(
+              documents: categoryResults,
+              query: _searchController.text,
+            );
+
+        // ----------------------------------------------------
+        // GET UNIQUE CATEGORIES
+        // ----------------------------------------------------
+
+        final List<String> categories = _documentController.getCategories(
+          documents,
+        );
+
+        // ----------------------------------------------------
+        // MAIN DASHBOARD
+        // ----------------------------------------------------
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF5F6FA),
+          body: SafeArea(
+            child: Column(
               children: [
                 // ==================================================
                 // HEADER
@@ -518,25 +526,25 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                 ),
               ],
-            );
-          },
-        ),
-      ),
+            ),
+          ),
 
-      // ============================================================
-      // UPLOAD BUTTON
-      // ============================================================
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const UploadDocumentScreen()),
-          );
-        },
-        backgroundColor: const Color(0xFF4DB58A),
-        elevation: 2,
-        child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
-      ),
+          // ============================================================
+          // UPLOAD BUTTON
+          // ============================================================
+          floatingActionButton: FloatingActionButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const UploadDocumentScreen()),
+              );
+            },
+            backgroundColor: const Color(0xFF4DB58A),
+            elevation: 2,
+            child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
+          ),
+        );
+      },
     );
   }
 
