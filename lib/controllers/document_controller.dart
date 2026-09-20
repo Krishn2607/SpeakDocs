@@ -18,13 +18,13 @@ class DocumentController {
   // rebuilds during document uploads or other state changes.
   //
 
-  late final Stream<List<DocumentModel>> documentsStream = _documentService
-      .getUserDocuments()
-      .map((documents) {
-        return documents
-            .map((document) => DocumentModel.fromMap(document))
-            .toList();
-      });
+  Stream<List<DocumentModel>> get documentsStream {
+    return _documentService.getUserDocuments().map((documents) {
+      return documents
+          .map((document) => DocumentModel.fromMap(document))
+          .toList();
+    });
+  }
 
   // ============================================================
   // PICK DOCUMENT

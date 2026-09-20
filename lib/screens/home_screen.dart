@@ -46,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // This prevents duplicate stream subscriptions when setState()
   // rebuilds the dashboard during document uploads.
 
-  late final Stream<List<DocumentModel>> _documentsStream;
+  late Stream<List<DocumentModel>> _documentsStream;
 
   // ============================================================
   // INIT STATE
@@ -56,9 +56,19 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
 
-    _documentsStream = _documentController.documentsStream;
+    _loadDocumentsStream();
 
     _searchController.addListener(_onSearchChanged);
+  }
+
+  void _loadDocumentsStream() {
+    _documentsStream = _documentController.documentsStream;
+  }
+
+  void _retryDocuments() {
+    setState(() {
+      _loadDocumentsStream();
+    });
   }
 
   // ============================================================
@@ -285,10 +295,41 @@ class _HomeScreenState extends State<HomeScreen> {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text(
-                    'Unable to load documents.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey.shade700),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.cloud_off_rounded,
+                        size: 48,
+                        color: Colors.grey.shade500,
+                      ),
+                      const SizedBox(height: 14),
+                      const Text(
+                        'Connection problem',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF171C35),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Unable to load your documents.\n'
+                        'Please check your internet connection and try again.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey.shade700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      ElevatedButton.icon(
+                        onPressed: _retryDocuments,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry'),
+                      ),
+                    ],
                   ),
                 ),
               );
