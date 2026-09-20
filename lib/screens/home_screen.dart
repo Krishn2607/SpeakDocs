@@ -104,6 +104,12 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _selectAllCategories() {
+    setState(() {
+      _selectedCategory = null;
+    });
+  }
+
   // ============================================================
   // DISPOSE
   // ============================================================
@@ -555,17 +561,22 @@ class _HomeScreenState extends State<HomeScreen> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: categories
-                  .map(
-                    (category) => CategoryChip(
-                      category: category,
-                      isSelected: _selectedCategory == category,
-                      onTap: () {
-                        _selectCategory(category);
-                      },
-                    ),
-                  )
-                  .toList(),
+              children: [
+                CategoryChip(
+                  category: 'All',
+                  isSelected: _selectedCategory == null,
+                  onTap: _selectAllCategories,
+                ),
+                ...categories.map(
+                  (category) => CategoryChip(
+                    category: category,
+                    isSelected: _selectedCategory == category,
+                    onTap: () {
+                      _selectCategory(category);
+                    },
+                  ),
+                ),
+              ],
             ),
 
           const SizedBox(height: 20),
