@@ -137,7 +137,9 @@ class DocumentService {
             fileOptions: const FileOptions(upsert: false),
           );
     } catch (_) {
-      throw Exception('Unable to upload the document. Please try again.');
+      throw Exception(
+        'Upload failed. Please check your internet connection and try again.',
+      );
     }
 
     // ----------------------------------------------------------
