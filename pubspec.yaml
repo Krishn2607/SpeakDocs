@@ -41,6 +41,8 @@ dependencies:
   # Used to open uploaded documents using the device's
   # default application.
   url_launcher: ^6.3.2
+  record: ^7.1.1
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:

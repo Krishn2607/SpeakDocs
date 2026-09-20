@@ -3,6 +3,7 @@ import '../widgets/empty_state_widget.dart';
 import '../controllers/document_controller.dart';
 import '../models/document_model.dart';
 import '../controllers/auth_controller.dart';
+import '../controllers/voice_controller.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/document_card.dart';
 import '../widgets/stat_card.dart';
@@ -23,6 +24,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   final AuthController _authController = AuthController();
+
+  final VoiceController _voiceController = VoiceController();
 
   // ============================================================
   // SEARCH STATE
@@ -109,6 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _searchController.removeListener(_onSearchChanged);
 
     _searchController.dispose();
+    _voiceController.dispose();
 
     super.dispose();
   }
@@ -149,13 +153,83 @@ class _HomeScreenState extends State<HomeScreen> {
   // VOICE SEARCH
   // ============================================================
 
-  void _showVoiceSearchMessage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Voice search will be added later.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  Future<void> _toggleVoiceRecording() async {
+    if (_voiceController.isRecording) {
+      await _stopVoiceRecording();
+      return;
+    }
+
+    try {
+      await _voiceController.startRecording();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {});
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Listening... Tap the microphone to stop.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _stopVoiceRecording() async {
+    try {
+      final String? filePath = await _voiceController.stopRecording();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {});
+
+      if (filePath == null || filePath.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No recording was captured.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Voice recording captured successfully.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      await _voiceController.deleteRecording(filePath);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {});
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   // ============================================================
@@ -341,9 +415,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                       borderRadius: BorderRadius.circular(10),
                                       child: InkWell(
                                         borderRadius: BorderRadius.circular(10),
-                                        onTap: _showVoiceSearchMessage,
-                                        child: const Icon(
-                                          Icons.mic_rounded,
+                                        onTap: _toggleVoiceRecording,
+                                        child: Icon(
+                                          _voiceController.isRecording
+                                              ? Icons.stop_rounded
+                                              : Icons.mic_rounded,
                                           color: Colors.white,
                                           size: 19,
                                         ),
