@@ -6,15 +6,7 @@ class VoiceController {
   VoiceController({VoiceService? voiceService})
     : _voiceService = voiceService ?? VoiceService();
 
-  // ============================================================
-  // STATE
-  // ============================================================
-
   bool isRecording = false;
-
-  // ============================================================
-  // START RECORDING
-  // ============================================================
 
   Future<void> startRecording() async {
     if (isRecording) {
@@ -26,25 +18,31 @@ class VoiceController {
     isRecording = true;
   }
 
-  // ============================================================
-  // STOP RECORDING
-  // ============================================================
-
-  Future<String?> stopRecording() async {
+  Future<String> stopAndTranscribe() async {
     if (!isRecording) {
-      return null;
+      throw Exception('Voice recording is not active.');
     }
 
-    final String? filePath = await _voiceService.stopRecording();
+    String? filePath;
 
-    isRecording = false;
+    try {
+      filePath = await _voiceService.stopRecording();
 
-    return filePath;
+      isRecording = false;
+
+      if (filePath == null || filePath.isEmpty) {
+        throw Exception('No recording was captured.');
+      }
+
+      try {
+        return await _voiceService.transcribeRecording(filePath);
+      } finally {
+        await _voiceService.deleteRecording(filePath);
+      }
+    } finally {
+      isRecording = false;
+    }
   }
-
-  // ============================================================
-  // CANCEL RECORDING
-  // ============================================================
 
   Future<void> cancelRecording() async {
     if (!isRecording) {
@@ -55,18 +53,6 @@ class VoiceController {
 
     isRecording = false;
   }
-
-  // ============================================================
-  // DELETE RECORDING
-  // ============================================================
-
-  Future<void> deleteRecording(String filePath) async {
-    await _voiceService.deleteRecording(filePath);
-  }
-
-  // ============================================================
-  // DISPOSE
-  // ============================================================
 
   void dispose() {
     _voiceService.dispose();

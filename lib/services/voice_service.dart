@@ -1,14 +1,15 @@
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class VoiceService {
   final AudioRecorder _recorder = AudioRecorder();
 
-  // ============================================================
-  // START RECORDING
-  // ============================================================
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   Future<void> startRecording() async {
     final bool hasPermission = await _recorder.hasPermission();
@@ -25,25 +26,63 @@ class VoiceService {
     await _recorder.start(const RecordConfig(), path: filePath);
   }
 
-  // ============================================================
-  // STOP RECORDING
-  // ============================================================
-
   Future<String?> stopRecording() async {
     return await _recorder.stop();
   }
-
-  // ============================================================
-  // CANCEL RECORDING
-  // ============================================================
 
   Future<void> cancelRecording() async {
     await _recorder.cancel();
   }
 
-  // ============================================================
-  // DELETE TEMPORARY RECORDING
-  // ============================================================
+  Future<String> transcribeRecording(String filePath) async {
+    final firebase_auth.User? user =
+        firebase_auth.FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      throw Exception('You must be logged in to use voice search.');
+    }
+
+    final String? idToken = await user.getIdToken();
+
+    if (idToken == null || idToken.isEmpty) {
+      throw Exception('Unable to authenticate voice search.');
+    }
+
+    final File audioFile = File(filePath);
+
+    if (!await audioFile.exists()) {
+      throw Exception('Recorded audio file was not found.');
+    }
+
+    final Uint8List audioBytes = await audioFile.readAsBytes();
+
+    if (audioBytes.isEmpty) {
+      throw Exception('Recorded audio file is empty.');
+    }
+
+    final response = await _supabase.functions.invoke(
+      'transcribe-audio',
+      body: audioBytes,
+      headers: {
+        'Authorization': 'Bearer $idToken',
+        'Content-Type': 'audio/mp4',
+      },
+    );
+
+    final dynamic data = response.data;
+
+    if (data is! Map) {
+      throw Exception('Invalid transcription response.');
+    }
+
+    final String text = data['text']?.toString().trim() ?? '';
+
+    if (text.isEmpty) {
+      throw Exception('No speech was detected.');
+    }
+
+    return text;
+  }
 
   Future<void> deleteRecording(String filePath) async {
     final File file = File(filePath);
@@ -52,10 +91,6 @@ class VoiceService {
       await file.delete();
     }
   }
-
-  // ============================================================
-  // DISPOSE
-  // ============================================================
 
   void dispose() {
     _recorder.dispose();

@@ -32,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   bool _isSearchActive = false;
+  bool _isVoiceProcessing = false;
 
   String? _selectedCategory;
 
@@ -154,6 +155,10 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Future<void> _toggleVoiceRecording() async {
+    if (_isVoiceProcessing) {
+      return;
+    }
+
     if (_voiceController.isRecording) {
       await _stopVoiceRecording();
       return;
@@ -170,18 +175,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Listening... Tap the microphone to stop.'),
+          content: Text('Listening... Tap the microphone when finished.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } catch (error) {
+    } catch (e) {
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -189,46 +194,52 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _stopVoiceRecording() async {
+    if (_isVoiceProcessing) {
+      return;
+    }
+
+    setState(() {
+      _isVoiceProcessing = true;
+    });
+
     try {
-      final String? filePath = await _voiceController.stopRecording();
+      final String transcription = await _voiceController.stopAndTranscribe();
 
       if (!mounted) {
         return;
       }
 
-      setState(() {});
+      _searchController.text = transcription;
 
-      if (filePath == null || filePath.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No recording was captured.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        return;
-      }
+      _searchController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _searchController.text.length),
+      );
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Voice recording captured successfully.'),
+          content: Text('Voice search completed.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
 
-      await _voiceController.deleteRecording(filePath);
-    } catch (error) {
+      setState(() {});
+    } catch (e) {
       if (!mounted) {
         return;
       }
 
-      setState(() {});
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isVoiceProcessing = false;
+        });
+      }
     }
   }
 
@@ -416,13 +427,23 @@ class _HomeScreenState extends State<HomeScreen> {
                                       child: InkWell(
                                         borderRadius: BorderRadius.circular(10),
                                         onTap: _toggleVoiceRecording,
-                                        child: Icon(
-                                          _voiceController.isRecording
-                                              ? Icons.stop_rounded
-                                              : Icons.mic_rounded,
-                                          color: Colors.white,
-                                          size: 19,
-                                        ),
+                                        child: _isVoiceProcessing
+                                            ? const SizedBox(
+                                                width: 19,
+                                                height: 19,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      color: Colors.white,
+                                                    ),
+                                              )
+                                            : Icon(
+                                                _voiceController.isRecording
+                                                    ? Icons.stop_rounded
+                                                    : Icons.mic_rounded,
+                                                color: Colors.white,
+                                                size: 19,
+                                              ),
                                       ),
                                     ),
                                   ),
