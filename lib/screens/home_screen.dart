@@ -26,6 +26,14 @@ class _HomeScreenState extends State<HomeScreen> {
   final AuthController _authController = AuthController();
 
   // ============================================================
+  // SEARCH STATE
+  // ============================================================
+
+  bool _isSearchActive = false;
+
+  String? _selectedCategory;
+
+  // ============================================================
   // CURRENT USER
   // ============================================================
 
@@ -40,10 +48,11 @@ class _HomeScreenState extends State<HomeScreen> {
   // Keep one realtime stream for the lifetime of this screen.
   // This prevents duplicate stream subscriptions when setState()
   // rebuilds the dashboard during document uploads.
+
   late final Stream<List<DocumentModel>> _documentsStream;
 
   // ============================================================
-  // DISPOSE
+  // INIT STATE
   // ============================================================
 
   @override
@@ -51,11 +60,63 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
 
     _documentsStream = _documentController.documentsStream;
+
+    _searchController.addListener(_onSearchChanged);
   }
+
+  // ============================================================
+  // SEARCH CHANGE
+  // ============================================================
+
+  void _onSearchChanged() {
+    final bool hasQuery = _searchController.text.trim().isNotEmpty;
+
+    if (_isSearchActive == hasQuery) {
+      setState(() {});
+      return;
+    }
+
+    setState(() {
+      _isSearchActive = hasQuery;
+    });
+  }
+
+  // ============================================================
+  // CLEAR SEARCH
+  // ============================================================
+
+  void _clearSearch() {
+    _searchController.clear();
+
+    setState(() {
+      _isSearchActive = false;
+    });
+  }
+
+  // ============================================================
+  // CATEGORY FILTER
+  // ============================================================
+
+  void _selectCategory(String category) {
+    setState(() {
+      if (_selectedCategory == category) {
+        _selectedCategory = null;
+      } else {
+        _selectedCategory = category;
+      }
+    });
+  }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
 
   @override
   void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+
     _searchController.dispose();
+
     super.dispose();
   }
 
@@ -157,6 +218,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 .sortNewestFirst(snapshot.data ?? <DocumentModel>[]);
 
             // ----------------------------------------------------
+            // APPLY CATEGORY FILTER
+            // ----------------------------------------------------
+
+            final List<DocumentModel> categoryResults = _documentController
+                .filterByCategory(
+                  documents: documents,
+                  category: _selectedCategory,
+                );
+
+            // ----------------------------------------------------
+            // APPLY SEARCH FILTER
+            // ----------------------------------------------------
+
+            final List<DocumentModel> filteredDocuments = _documentController
+                .searchDocuments(
+                  documents: categoryResults,
+                  query: _searchController.text,
+                );
+
+            // ----------------------------------------------------
             // GET UNIQUE CATEGORIES
             // ----------------------------------------------------
 
@@ -195,13 +276,17 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           IconButton(
-                            onPressed: _logout,
-                            icon: const Icon(
-                              Icons.logout_rounded,
-                              color: Color(0xFFD8DBE7),
+                            onPressed: _isSearchActive ? _clearSearch : _logout,
+                            icon: Icon(
+                              _isSearchActive
+                                  ? Icons.close_rounded
+                                  : Icons.logout_rounded,
+                              color: const Color(0xFFD8DBE7),
                               size: 22,
                             ),
-                            tooltip: 'Logout',
+                            tooltip: _isSearchActive
+                                ? 'Close search'
+                                : 'Logout',
                           ),
                         ],
                       ),
@@ -247,22 +332,31 @@ class _HomeScreenState extends State<HomeScreen> {
                               Icons.search_rounded,
                               color: Color(0xFF72798A),
                             ),
-                            suffixIcon: Padding(
-                              padding: const EdgeInsets.all(6),
-                              child: Material(
-                                color: const Color(0xFF6C63FF),
-                                borderRadius: BorderRadius.circular(10),
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(10),
-                                  onTap: _showVoiceSearchMessage,
-                                  child: const Icon(
-                                    Icons.mic_rounded,
-                                    color: Colors.white,
-                                    size: 19,
+                            suffixIcon: _isSearchActive
+                                ? IconButton(
+                                    onPressed: _clearSearch,
+                                    icon: const Icon(
+                                      Icons.close_rounded,
+                                      color: Color(0xFF72798A),
+                                    ),
+                                    tooltip: 'Clear search',
+                                  )
+                                : Padding(
+                                    padding: const EdgeInsets.all(6),
+                                    child: Material(
+                                      color: const Color(0xFF6C63FF),
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(10),
+                                        onTap: _showVoiceSearchMessage,
+                                        child: const Icon(
+                                          Icons.mic_rounded,
+                                          color: Colors.white,
+                                          size: 19,
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            ),
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(
                               vertical: 13,
@@ -275,104 +369,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
 
                 // ==================================================
-                // DASHBOARD CONTENT
+                // CONTENT
                 // ==================================================
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(9, 16, 9, 90),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // ==========================================
-                        // STATISTICS
-                        // ==========================================
-                        Row(
-                          children: [
-                            Expanded(
-                              child: StatCard(
-                                value: documents.length.toString(),
-                                label: 'Documents',
-                                icon: Icons.description_outlined,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: StatCard(
-                                value: categories.length.toString(),
-                                label: 'Categories',
-                                icon: Icons.folder_outlined,
-                              ),
-                            ),
-                          ],
+                  child: _isSearchActive
+                      ? _buildSearchResults(filteredDocuments)
+                      : _buildDashboard(
+                          documents,
+                          filteredDocuments,
+                          categories,
                         ),
-
-                        const SizedBox(height: 18),
-
-                        // ==========================================
-                        // CATEGORIES
-                        // ==========================================
-                        const Text(
-                          'Categories',
-                          style: TextStyle(
-                            color: Color(0xFF171C35),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        if (categories.isEmpty)
-                          const Text(
-                            'No categories yet',
-                            style: TextStyle(
-                              color: Color(0xFF8A8F9D),
-                              fontSize: 13,
-                            ),
-                          )
-                        else
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: categories
-                                .map(
-                                  (category) =>
-                                      CategoryChip(category: category),
-                                )
-                                .toList(),
-                          ),
-
-                        const SizedBox(height: 20),
-
-                        // ==========================================
-                        // RECENT DOCUMENTS
-                        // ==========================================
-                        const Text(
-                          'Recent documents',
-                          style: TextStyle(
-                            color: Color(0xFF171C35),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        if (documents.isEmpty)
-                          _buildEmptyDocuments()
-                        else
-                          Column(
-                            children: documents
-                                .take(5)
-                                .map(
-                                  (document) =>
-                                      DocumentCard(document: document),
-                                )
-                                .toList(),
-                          ),
-                      ],
-                    ),
-                  ),
                 ),
               ],
             );
@@ -393,6 +399,207 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF4DB58A),
         elevation: 2,
         child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
+      ),
+    );
+  }
+
+  // ============================================================
+  // NORMAL DASHBOARD
+  // ============================================================
+
+  Widget _buildDashboard(
+    List<DocumentModel> documents,
+    List<DocumentModel> filteredDocuments,
+    List<String> categories,
+  ) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(9, 16, 9, 90),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ==========================================
+          // STATISTICS
+          // ==========================================
+          Row(
+            children: [
+              Expanded(
+                child: StatCard(
+                  value: documents.length.toString(),
+                  label: 'Documents',
+                  icon: Icons.description_outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: StatCard(
+                  value: categories.length.toString(),
+                  label: 'Categories',
+                  icon: Icons.folder_outlined,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          // ==========================================
+          // CATEGORIES
+          // ==========================================
+          const Text(
+            'Categories',
+            style: TextStyle(
+              color: Color(0xFF171C35),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          if (categories.isEmpty)
+            const Text(
+              'No categories yet',
+              style: TextStyle(color: Color(0xFF8A8F9D), fontSize: 13),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: categories
+                  .map(
+                    (category) => CategoryChip(
+                      category: category,
+                      isSelected: _selectedCategory == category,
+                      onTap: () {
+                        _selectCategory(category);
+                      },
+                    ),
+                  )
+                  .toList(),
+            ),
+
+          const SizedBox(height: 20),
+
+          // ==========================================
+          // RECENT DOCUMENTS
+          // ==========================================
+          const Text(
+            'Recent documents',
+            style: TextStyle(
+              color: Color(0xFF171C35),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          if (documents.isEmpty)
+            _buildEmptyDocuments()
+          else if (filteredDocuments.isEmpty)
+            _buildNoCategoryResults()
+          else
+            Column(
+              children: filteredDocuments
+                  .take(5)
+                  .map((document) => DocumentCard(document: document))
+                  .toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // SEARCH RESULTS
+  // ============================================================
+
+  Widget _buildSearchResults(List<DocumentModel> searchResults) {
+    final String query = _searchController.text.trim();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 90),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ========================================================
+          // SEARCH RESULT LABEL
+          // ========================================================
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEDEBFF),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                _selectedCategory == null
+                    ? 'Showing results for "$query"'
+                    : 'Showing "$_selectedCategory" results for "$query"',
+                style: const TextStyle(
+                  color: Color(0xFF5B54C7),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // ========================================================
+          // NO RESULTS
+          // ========================================================
+          if (searchResults.isEmpty)
+            _buildNoSearchResults(query)
+          // ========================================================
+          // RESULTS
+          // ========================================================
+          else
+            Column(
+              children: searchResults
+                  .map((document) => DocumentCard(document: document))
+                  .toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // NO SEARCH RESULTS
+  // ============================================================
+
+  Widget _buildNoSearchResults(String query) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: const Color(0xFFE0E3EC)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.search_off_rounded, size: 44, color: Colors.grey.shade400),
+          const SizedBox(height: 10),
+          const Text(
+            'No documents found',
+            style: TextStyle(
+              color: Color(0xFF171C35),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _selectedCategory == null
+                ? 'No documents match "$query".'
+                : 'No "$_selectedCategory" documents match "$query".',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFF8A8F9D), fontSize: 12),
+          ),
+        ],
       ),
     );
   }
@@ -429,6 +636,46 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 4),
           const Text(
             'Upload your first document to get started.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Color(0xFF8A8F9D), fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // NO CATEGORY RESULTS
+  // ============================================================
+
+  Widget _buildNoCategoryResults() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: const Color(0xFFE0E3EC)),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.folder_open_outlined,
+            size: 44,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'No documents in this category',
+            style: TextStyle(
+              color: Color(0xFF171C35),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Try selecting another category.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Color(0xFF8A8F9D), fontSize: 12),
           ),

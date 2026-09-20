@@ -1,13 +1,12 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class DocumentService {
-  final firebase_auth.FirebaseAuth _auth =
-      firebase_auth.FirebaseAuth.instance;
+  final firebase_auth.FirebaseAuth _auth = firebase_auth.FirebaseAuth.instance;
 
-  final SupabaseClient _supabase =
-      Supabase.instance.client;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   // ============================================================
   // SUPABASE STORAGE BUCKET
@@ -24,15 +23,11 @@ class DocumentService {
   // The actual upload is handled separately so the UI can show
   // the selected file before uploading it.
   //
+
   Future<PlatformFile?> pickDocument() async {
-    final List<PlatformFile> files =
-    await FilePicker.pickFiles(
+    final List<PlatformFile> files = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: [
-        'pdf',
-        'doc',
-        'docx',
-      ],
+      allowedExtensions: ['pdf', 'doc', 'docx'],
     );
 
     // User cancelled the picker.
@@ -55,8 +50,7 @@ class DocumentService {
     // 1. Get current Firebase user
     // ----------------------------------------------------------
 
-    final firebase_auth.User? user =
-        _auth.currentUser;
+    final firebase_auth.User? user = _auth.currentUser;
 
     if (user == null) {
       throw Exception('User is not logged in.');
@@ -66,20 +60,16 @@ class DocumentService {
     // 2. Get file information
     // ----------------------------------------------------------
 
-    final String fileName =
-        selectedFile.name;
+    final String fileName = selectedFile.name;
 
     // ----------------------------------------------------------
     // 3. Get file bytes
     // ----------------------------------------------------------
 
-    final bytes =
-    await selectedFile.readAsBytes();
+    final bytes = await selectedFile.readAsBytes();
 
     if (bytes.isEmpty) {
-      throw Exception(
-        'Unable to read selected file.',
-      );
+      throw Exception('Unable to read selected file.');
     }
 
     // ----------------------------------------------------------
@@ -89,16 +79,14 @@ class DocumentService {
     String extension = '';
 
     if (fileName.contains('.')) {
-      extension =
-          fileName.split('.').last.toLowerCase();
+      extension = fileName.split('.').last.toLowerCase();
     }
 
     // ----------------------------------------------------------
     // 5. Get file size
     // ----------------------------------------------------------
 
-    final int fileSize =
-        bytes.length;
+    final int fileSize = bytes.length;
 
     // ----------------------------------------------------------
     // 6. Create unique Supabase Storage path
@@ -119,20 +107,16 @@ class DocumentService {
     await _supabase.storage
         .from(_bucketName)
         .uploadBinary(
-      storagePath,
-      bytes,
-      fileOptions: const FileOptions(
-        upsert: false,
-      ),
-    );
+          storagePath,
+          bytes,
+          fileOptions: const FileOptions(upsert: false),
+        );
 
     // ----------------------------------------------------------
     // 8. Save document metadata in Supabase
     // ----------------------------------------------------------
 
-    await _supabase
-        .from('documents')
-        .insert({
+    await _supabase.from('documents').insert({
       'user_id': user.uid,
       'name': fileName,
       'extension': extension,
@@ -147,10 +131,8 @@ class DocumentService {
   // GET CURRENT USER DOCUMENTS
   // ============================================================
 
-  Stream<List<Map<String, dynamic>>>
-  getUserDocuments() {
-    final firebase_auth.User? user =
-        _auth.currentUser;
+  Stream<List<Map<String, dynamic>>> getUserDocuments() {
+    final firebase_auth.User? user = _auth.currentUser;
 
     if (user == null) {
       return const Stream.empty();
@@ -160,72 +142,86 @@ class DocumentService {
         .from('documents')
         .stream(primaryKey: ['id'])
         .eq('user_id', user.uid)
-        .order(
-      'uploaded_at',
-      ascending: false,
-    );
+        .order('uploaded_at', ascending: false);
   }
 
   // ============================================================
   // DELETE DOCUMENT
   // ============================================================
 
-  Future<void> deleteDocument(
-      Map<String, dynamic> document,
-      ) async {
-    final firebase_auth.User? user =
-        _auth.currentUser;
+  Future<void> deleteDocument({
+    required String documentId,
+    required String storagePath,
+  }) async {
+    final firebase_auth.User? user = _auth.currentUser;
 
     if (user == null) {
-      throw Exception(
-        'User is not logged in.',
-      );
+      throw Exception('User is not logged in.');
     }
 
-    final String? storagePath =
-    document['storage_path'] as String?;
-
-    final String? documentId =
-    document['id']?.toString();
-
-    if (storagePath == null ||
-        documentId == null) {
-      throw Exception(
-        'Invalid document information.',
-      );
+    if (documentId.isEmpty || storagePath.isEmpty) {
+      throw Exception('Invalid document information.');
     }
 
     // ----------------------------------------------------------
     // 1. Delete actual file from Supabase Storage
     // ----------------------------------------------------------
 
-    await _supabase.storage
-        .from(_bucketName)
-        .remove([
-      storagePath,
-    ]);
+    await _supabase.storage.from(_bucketName).remove([storagePath]);
 
     // ----------------------------------------------------------
-    // 2. Delete metadata from Supabase database
+    // 2. Delete document metadata from Supabase database
     // ----------------------------------------------------------
 
-    await _supabase
+    final List<Map<String, dynamic>> deletedRows = await _supabase
         .from('documents')
         .delete()
         .eq('id', documentId)
-        .eq('user_id', user.uid);
+        .eq('user_id', user.uid)
+        .select('id');
+
+    // ----------------------------------------------------------
+    // 3. Verify that the database row was actually deleted
+    // ----------------------------------------------------------
+
+    if (deletedRows.isEmpty) {
+      throw Exception(
+        'Document file was removed, but the database row was not deleted.',
+      );
+    }
   }
 
   // ============================================================
-  // GET FILE URL
+  // OPEN DOCUMENT
   // ============================================================
+  //
+  // The documents bucket is private.
+  //
+  // Therefore we create a temporary signed URL instead of using
+  // getPublicUrl().
+  //
+  // The signed URL remains valid for 5 minutes.
+  //
 
-  String getFileUrl(
-      String storagePath,
-      ) {
-    return _supabase.storage
+  Future<void> openDocument({required String storagePath}) async {
+    if (storagePath.isEmpty) {
+      throw Exception('Invalid document storage path.');
+    }
+
+    final String signedUrl = await _supabase.storage
         .from(_bucketName)
-        .getPublicUrl(storagePath);
+        .createSignedUrl(storagePath, 300);
+
+    final Uri uri = Uri.parse(signedUrl);
+
+    final bool launched = await launchUrl(
+      uri,
+      mode: LaunchMode.platformDefault,
+    );
+
+    if (!launched) {
+      throw Exception('Unable to open document.');
+    }
   }
 
   // ============================================================
@@ -238,14 +234,12 @@ class DocumentService {
     }
 
     if (bytes < 1024 * 1024) {
-      final double kb =
-          bytes / 1024;
+      final double kb = bytes / 1024;
 
       return '${kb.toStringAsFixed(1)} KB';
     }
 
-    final double mb =
-        bytes / (1024 * 1024);
+    final double mb = bytes / (1024 * 1024);
 
     return '${mb.toStringAsFixed(1)} MB';
   }
