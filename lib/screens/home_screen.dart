@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import '../widgets/empty_state_widget.dart';
 import '../controllers/document_controller.dart';
 import '../models/document_model.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/voice_controller.dart';
+import '../services/voice_command_service.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/document_card.dart';
 import '../widgets/stat_card.dart';
@@ -30,6 +30,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final VoiceController _voiceController = VoiceController();
 
+  final VoiceCommandService _voiceCommandService = VoiceCommandService();
+
   // ============================================================
   // SEARCH STATE
   // ============================================================
@@ -38,6 +40,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isVoiceProcessing = false;
 
   String? _selectedCategory;
+
+  List<DocumentModel> _latestDocuments = <DocumentModel>[];
 
   // ============================================================
   // DOCUMENT CONTROLLER
@@ -51,9 +55,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   late Stream<List<DocumentModel>> _documentsStream;
 
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  bool? _hasNetworkConnection;
-
   // ============================================================
   // INIT STATE
   // ============================================================
@@ -63,35 +64,12 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
 
     _loadDocumentsStream();
-    _startConnectivityListener();
 
     _searchController.addListener(_onSearchChanged);
   }
 
   void _loadDocumentsStream() {
     _documentsStream = _documentController.documentsStream;
-  }
-
-  void _startConnectivityListener() {
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
-      List<ConnectivityResult> results,
-    ) {
-      final bool isConnected = results.any(
-        (result) => result != ConnectivityResult.none,
-      );
-
-      if (_hasNetworkConnection == null) {
-        _hasNetworkConnection = isConnected;
-        return;
-      }
-
-      final bool wasDisconnected = !_hasNetworkConnection!;
-      _hasNetworkConnection = isConnected;
-
-      if (isConnected && wasDisconnected && mounted) {
-        _retryDocuments();
-      }
-    });
   }
 
   void _retryDocuments() {
@@ -158,7 +136,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _searchController.removeListener(_onSearchChanged);
 
     _searchController.dispose();
-    _connectivitySubscription?.cancel();
     _voiceController.dispose();
 
     super.dispose();
@@ -255,20 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      _searchController.text = transcription;
-
-      _searchController.selection = TextSelection.fromPosition(
-        TextPosition(offset: _searchController.text.length),
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Voice search completed.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-
-      setState(() {});
+      await _handleVoiceCommand(transcription);
     } catch (e) {
       if (!mounted) {
         return;
@@ -287,6 +251,159 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+  }
+
+  Future<void> _handleVoiceCommand(String transcription) async {
+    final VoiceCommand command = _voiceCommandService.parseCommand(
+      transcription,
+    );
+
+    switch (command.type) {
+      case VoiceCommandType.open:
+        await _handleOpenVoiceCommand(command.value ?? '');
+        break;
+      case VoiceCommandType.search:
+        _handleSearchVoiceCommand(command.value ?? '');
+        break;
+      case VoiceCommandType.category:
+        _handleCategoryVoiceCommand(command.value ?? '');
+        break;
+      case VoiceCommandType.clear:
+        _clearSearch();
+        break;
+      case VoiceCommandType.showAll:
+        _clearSearch();
+        setState(() {
+          _selectedCategory = null;
+        });
+        break;
+      case VoiceCommandType.unknown:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'I could not understand that. Try a document name or say “open” followed by the document name.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        break;
+    }
+  }
+
+  Future<void> _handleOpenVoiceCommand(String query) async {
+    final String cleanedQuery = query.trim();
+
+    if (cleanedQuery.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please say the document name you want to open.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final List<DocumentModel> matches = _voiceCommandService
+        .findMatchingDocuments(
+          documents: _latestDocuments,
+          query: cleanedQuery,
+        );
+
+    if (matches.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No document found for “$cleanedQuery”.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (matches.length > 1) {
+      _searchController.text = cleanedQuery;
+      _searchController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _searchController.text.length),
+      );
+
+      setState(() {
+        _selectedCategory = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'I found ${matches.length} documents. Please choose one from the results.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    try {
+      await _documentController.openDocument(matches.single);
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to open document. Please check your internet connection and try again.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _handleSearchVoiceCommand(String query) {
+    final String cleanedQuery = query.trim();
+
+    if (cleanedQuery.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please say a document name or search term.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    _searchController.text = cleanedQuery;
+    _searchController.selection = TextSelection.fromPosition(
+      TextPosition(offset: _searchController.text.length),
+    );
+
+    setState(() {
+      _selectedCategory = null;
+    });
+  }
+
+  void _handleCategoryVoiceCommand(String query) {
+    final String? category = _voiceCommandService.findMatchingCategory(
+      documents: _latestDocuments,
+      query: query,
+    );
+
+    if (category == null) {
+      _handleSearchVoiceCommand(query);
+      return;
+    }
+
+    _searchController.clear();
+
+    setState(() {
+      _selectedCategory = category;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Showing “$category” documents.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   // ============================================================
@@ -376,6 +493,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
         final List<DocumentModel> documents = _documentController
             .sortNewestFirst(snapshot.data ?? <DocumentModel>[]);
+
+        _latestDocuments = documents;
 
         // ----------------------------------------------------
         // APPLY CATEGORY FILTER
