@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import '../widgets/empty_state_widget.dart';
 import '../controllers/document_controller.dart';
@@ -48,6 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   late Stream<List<DocumentModel>> _documentsStream;
 
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool? _hasNetworkConnection;
+
   // ============================================================
   // INIT STATE
   // ============================================================
@@ -57,12 +63,35 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
 
     _loadDocumentsStream();
+    _startConnectivityListener();
 
     _searchController.addListener(_onSearchChanged);
   }
 
   void _loadDocumentsStream() {
     _documentsStream = _documentController.documentsStream;
+  }
+
+  void _startConnectivityListener() {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      List<ConnectivityResult> results,
+    ) {
+      final bool isConnected = results.any(
+        (result) => result != ConnectivityResult.none,
+      );
+
+      if (_hasNetworkConnection == null) {
+        _hasNetworkConnection = isConnected;
+        return;
+      }
+
+      final bool wasDisconnected = !_hasNetworkConnection!;
+      _hasNetworkConnection = isConnected;
+
+      if (isConnected && wasDisconnected && mounted) {
+        _retryDocuments();
+      }
+    });
   }
 
   void _retryDocuments() {
@@ -129,6 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _searchController.removeListener(_onSearchChanged);
 
     _searchController.dispose();
+    _connectivitySubscription?.cancel();
     _voiceController.dispose();
 
     super.dispose();
